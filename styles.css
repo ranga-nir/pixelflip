@@ -1,0 +1,47 @@
+:root {
+  color-scheme: dark;
+}
+
+[data-bs-theme="dark"] {
+  /* Base */
+  --bs-body-bg: #071426;
+  --bs-body-color: #e6eefc;
+
+  /* Surfaces */
+  --bs-tertiary-bg: #0a1b33; /* navbar bg-body-tertiary */
+  --bs-secondary-bg: #0b213f;
+
+  /* Borders */
+  --bs-border-color: rgba(230, 238, 252, 0.18);
+
+  /* Brand / actions */
+  --bs-primary: #2b6cff;
+  --bs-primary-rgb: 43, 108, 255;
+  --bs-link-color: #89b4ff;
+  --bs-link-hover-color: #a7c8ff;
+}
+
+.preview-wrap {
+  border: 1px dashed var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  background: var(--bs-body-bg);
+  height: min(60vh, 520px);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+#previewCanvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  image-rendering: auto;
+}
+
+#status {
+  min-height: 1.2rem;
+}
+
+tr[data-state="working"] {
+  opacity: 0.8;
+}
