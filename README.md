@@ -2,8 +2,6 @@
 
 A simple but powerful browser-based **all-in-one** image converter
 
-[Open PixelFlip Image Converter](https://ranga-nir.github.io/pixelflip-img-converter/)
-
 Features:
 - Convert images to **PNG / JPEG / WebP**
 - Crop

@@ -3,22 +3,107 @@
 }
 
 [data-bs-theme="dark"] {
+  /* Brand */
+  --bs-primary: #7e54b4;
+  --bs-primary-rgb: 126, 84, 180;
+
   /* Base */
-  --bs-body-bg: #071426;
-  --bs-body-color: #e6eefc;
+  --bs-body-bg: #0a0610;
+  --bs-body-color: #f3ecff;
+  --bs-emphasis-color: #ffffff;
+
+  /* Text hierarchy */
+  --bs-secondary-color: rgba(243, 236, 255, 0.7);
+  --bs-tertiary-color: rgba(243, 236, 255, 0.55);
+  --bs-heading-color: #fbf7ff;
 
   /* Surfaces */
-  --bs-tertiary-bg: #0a1b33; /* navbar bg-body-tertiary */
-  --bs-secondary-bg: #0b213f;
+  --bs-secondary-bg: #140a20;
+  --bs-tertiary-bg: #10081a; /* navbar bg-body-tertiary */
 
   /* Borders */
-  --bs-border-color: rgba(230, 238, 252, 0.18);
+  --bs-border-color: rgba(243, 236, 255, 0.18);
+  --bs-border-color-translucent: rgba(243, 236, 255, 0.14);
 
-  /* Brand / actions */
-  --bs-primary: #2b6cff;
-  --bs-primary-rgb: 43, 108, 255;
-  --bs-link-color: #89b4ff;
-  --bs-link-hover-color: #a7c8ff;
+  /* Links */
+  --bs-link-color: #cbb3ff;
+  --bs-link-hover-color: #e2d6ff;
+
+  /* Focus ring */
+  --bs-focus-ring-color: rgba(var(--bs-primary-rgb), 0.28);
+}
+
+/* Buttons: make primary + outline-primary derive from the theme.
+   (Bootstrap doesn't automatically tie these to --bs-primary.) */
+[data-bs-theme="dark"] .btn-primary {
+  --bs-btn-bg: rgba(var(--bs-primary-rgb), 1);
+  --bs-btn-border-color: rgba(var(--bs-primary-rgb), 1);
+  --bs-btn-hover-bg: rgba(var(--bs-primary-rgb), 1);
+  --bs-btn-hover-border-color: rgba(var(--bs-primary-rgb), 1);
+  --bs-btn-active-bg: rgba(var(--bs-primary-rgb), 1);
+  --bs-btn-active-border-color: rgba(var(--bs-primary-rgb), 1);
+  --bs-btn-disabled-bg: rgba(var(--bs-primary-rgb), 1);
+  --bs-btn-disabled-border-color: rgba(var(--bs-primary-rgb), 1);
+  --bs-btn-focus-shadow-rgb: var(--bs-primary-rgb);
+}
+
+[data-bs-theme="dark"] .btn-outline-primary {
+  --bs-btn-color: var(--bs-primary);
+  --bs-btn-border-color: var(--bs-primary);
+  --bs-btn-hover-bg: var(--bs-primary);
+  --bs-btn-hover-border-color: var(--bs-primary);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-active-bg: var(--bs-primary);
+  --bs-btn-active-border-color: var(--bs-primary);
+  --bs-btn-active-color: #fff;
+  --bs-btn-disabled-color: var(--bs-primary);
+  --bs-btn-disabled-border-color: var(--bs-primary);
+  --bs-btn-focus-shadow-rgb: var(--bs-primary-rgb);
+}
+
+/* Inputs/select focus (border + glow) */
+[data-bs-theme="dark"] .form-select:focus,
+[data-bs-theme="dark"] .form-control:focus {
+  border-color: var(--bs-primary);
+  box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+}
+
+/* Checkboxes & radios */
+[data-bs-theme="dark"] .form-check-input:checked {
+  background-color: var(--bs-primary);
+  border-color: var(--bs-primary);
+}
+
+[data-bs-theme="dark"] .form-check-input:focus {
+  border-color: var(--bs-primary);
+  box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+}
+
+/* Range sliders (Quality / Blur)
+   Note: exact styling support varies by browser. */
+[data-bs-theme="dark"] .form-range {
+  accent-color: var(--bs-primary);
+}
+
+[data-bs-theme="dark"] .form-range::-webkit-slider-runnable-track {
+  background-color: rgba(var(--bs-primary-rgb), 0.28);
+}
+
+[data-bs-theme="dark"] .form-range::-webkit-slider-thumb {
+  background-color: var(--bs-primary);
+}
+
+[data-bs-theme="dark"] .form-range::-moz-range-track {
+  background-color: rgba(var(--bs-primary-rgb), 0.28);
+}
+
+[data-bs-theme="dark"] .form-range::-moz-range-progress {
+  background-color: rgba(var(--bs-primary-rgb), 0.55);
+}
+
+[data-bs-theme="dark"] .form-range::-moz-range-thumb {
+  background-color: var(--bs-primary);
+  border: 0;
 }
 
 .preview-wrap {
