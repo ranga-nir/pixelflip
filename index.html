@@ -48,7 +48,7 @@
 
             <hr class="my-4" />
 
-            <h5 class="card-title mb-3">3. Crop</h5>
+            <h5 class="card-title mb-3">3. Crop &amp; Rotate</h5>
             <div class="row g-2">
               <div class="col-12">
                 <div class="form-check">
@@ -59,6 +59,15 @@
               </div>
               <div class="col-12">
                 <button id="btnResetCrop" class="btn btn-sm btn-outline-secondary" type="button" disabled>Reset crop</button>
+              </div>
+              <div class="col-12">
+                <button id="btnRotate" class="btn btn-sm btn-outline-secondary" type="button" title="Rotate 90°">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise me-1" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+                    <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
+                  </svg>
+                  Rotate
+                </button>
               </div>
             </div>
 
@@ -84,7 +93,7 @@
                   <label class="form-check-label" for="fxReflect">Reflect</label>
                 </div>
               </div>
-              
+
               <div class="col-12">
                 <div class="form-check">
                   <input id="fxEdges" class="form-check-input" type="checkbox" />
@@ -100,6 +109,52 @@
                   <span>20px</span>
                 </div>
               </div>
+
+              
+
+              <div class="col-12">
+                <label class="form-label" for="fxBrightness">Brightness</label>
+                <input id="fxBrightness" type="range" class="form-range" min="0" max="2" step="0.01" value="1" />
+                <div class="d-flex justify-content-between small text-muted">
+                  <span>0</span>
+                  <span id="brightnessLabel">1.00</span>
+                  <span>2</span>
+                </div>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label" for="fxContrast">Contrast</label>
+                <input id="fxContrast" type="range" class="form-range" min="0" max="2" step="0.01" value="1" />
+                <div class="d-flex justify-content-between small text-muted">
+                  <span>0</span>
+                  <span id="contrastLabel">1.00</span>
+                  <span>2</span>
+                </div>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label" for="fxSaturate">Saturation</label>
+                <input id="fxSaturate" type="range" class="form-range" min="0" max="2" step="0.01" value="1" />
+                <div class="d-flex justify-content-between small text-muted">
+                  <span>0</span>
+                  <span id="saturateLabel">1.00</span>
+                  <span>2</span>
+                </div>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label" for="fxHue">Hue</label>
+                <input id="fxHue" type="range" class="form-range" min="-180" max="180" step="1" value="0" />
+                <div class="d-flex justify-content-between small text-muted">
+                  <span>-180°</span>
+                  <span id="hueLabel">0°</span>
+                  <span>180°</span>
+                </div>
+              </div>
+
+              <div class="col-12">
+                <button id="btnResetEffects" class="btn btn-sm btn-outline-secondary" type="button">Reset effects</button>
+              </div>
             </div>
 
             <hr class="my-4" />
@@ -114,7 +169,7 @@
       </div>
 
       <div class="col-12 col-lg-7">
-        <div class="card shadow-sm h-100">
+        <div class="card shadow-sm preview-sticky">
           <div class="card-body d-flex flex-column">
             <div class="d-flex align-items-center justify-content-between mb-2">
               <h5 class="card-title mb-0">Preview</h5>

@@ -1,10 +1,3 @@
-/*
-  Img Converter — client-side image conversion using Canvas.
-  - Convert: PNG/JPEG/WebP (output)
-  - Crop (optional, drag-to-select)
-  - Effects: grayscale, sepia, reflect, box blur, edges (Sobel)
-*/
-
 const els = {
   fileInput: document.getElementById('fileInput'),
   outFormat: document.getElementById('outFormat'),
@@ -17,9 +10,21 @@ const els = {
   fxGrayscale: document.getElementById('fxGrayscale'),
   fxSepia: document.getElementById('fxSepia'),
   fxReflect: document.getElementById('fxReflect'),
+  btnRotate: document.getElementById('btnRotate'),
   fxBlur: document.getElementById('fxBlur'),
   blurLabel: document.getElementById('blurLabel'),
   fxEdges: document.getElementById('fxEdges'),
+
+  fxBrightness: document.getElementById('fxBrightness'),
+  brightnessLabel: document.getElementById('brightnessLabel'),
+  fxContrast: document.getElementById('fxContrast'),
+  contrastLabel: document.getElementById('contrastLabel'),
+  fxSaturate: document.getElementById('fxSaturate'),
+  saturateLabel: document.getElementById('saturateLabel'),
+  fxHue: document.getElementById('fxHue'),
+  hueLabel: document.getElementById('hueLabel'),
+
+  btnResetEffects: document.getElementById('btnResetEffects'),
 
   btnPreview: document.getElementById('btnPreview'),
   btnConvert: document.getElementById('btnConvert'),
@@ -41,13 +46,14 @@ const fileDimCache = new Map();
 
 const state = {
   cropEnabled: false,
+  rotateDeg: 0,
   /** @type {{sx:number, sy:number, sw:number, sh:number} | null} */
   cropRect: null, // source-pixel crop
   /** @type {{sx:number, sy:number} | null} */
   dragStart: null, // source-pixel point
   /** @type {{sx:number, sy:number, sw:number, sh:number} | null} */
   dragRect: null, // source-pixel rect while dragging
-  /** @type {{srcW:number, srcH:number, canvasW:number, canvasH:number} | null} */
+  /** @type {{srcW:number, srcH:number, canvasW:number, canvasH:number, drawW:number, drawH:number, rotateRad:number, reflect:boolean} | null} */
   previewInfo: null,
 };
 
@@ -79,6 +85,11 @@ function clampRectToBounds(rect, boundsW, boundsH) {
 function updateLabels() {
   els.qualityLabel.textContent = Number(els.quality.value).toFixed(2);
   els.blurLabel.textContent = `${els.fxBlur.value}px`;
+
+  if (els.brightnessLabel) els.brightnessLabel.textContent = Number(els.fxBrightness.value).toFixed(2);
+  if (els.contrastLabel) els.contrastLabel.textContent = Number(els.fxContrast.value).toFixed(2);
+  if (els.saturateLabel) els.saturateLabel.textContent = Number(els.fxSaturate.value).toFixed(2);
+  if (els.hueLabel) els.hueLabel.textContent = `${Math.trunc(Number(els.fxHue.value) || 0)}°`;
 }
 
 function updateCropUi() {
@@ -104,13 +115,64 @@ function extForMime(mime) {
 }
 
 function effectConfig() {
+  const rotateDeg = state.rotateDeg;
   return {
     grayscale: !!els.fxGrayscale.checked,
     sepia: !!els.fxSepia.checked,
     reflect: !!els.fxReflect.checked,
+    rotateDeg,
     blurRadius: Math.max(0, Math.trunc(Number(els.fxBlur.value) || 0)),
+    brightness: clamp(Number(els.fxBrightness?.value ?? 1), 0, 2),
+    contrast: clamp(Number(els.fxContrast?.value ?? 1), 0, 2),
+    saturate: clamp(Number(els.fxSaturate?.value ?? 1), 0, 2),
+    hueRotate: clamp(Math.trunc(Number(els.fxHue?.value ?? 0)), -180, 180),
     edges: !!els.fxEdges.checked,
   };
+}
+
+function rotationRad(rotateDeg) {
+  const d = rotateDeg === 90 || rotateDeg === 180 || rotateDeg === 270 ? rotateDeg : 0;
+  return (d * Math.PI) / 180;
+}
+
+function rotatedDims(w, h, rotateDeg) {
+  const d = rotateDeg === 90 || rotateDeg === 270 ? 1 : 0;
+  return d ? { w: h, h: w } : { w, h };
+}
+
+function mapSourcePointToPreviewCanvasPoint(info, sx, sy) {
+  const fx = sx / info.srcW;
+  const fy = sy / info.srcH;
+  const xLocal = fx * info.drawW - info.drawW / 2;
+  const yLocal = fy * info.drawH - info.drawH / 2;
+
+  // Rotate
+  const cr = Math.cos(info.rotateRad);
+  const sr = Math.sin(info.rotateRad);
+  const xRot = xLocal * cr - yLocal * sr;
+  const yRot = xLocal * sr + yLocal * cr;
+
+  // Reflect (horizontal in output)
+  const xRef = info.reflect ? -xRot : xRot;
+  const yRef = yRot;
+
+  return {
+    x: info.canvasW / 2 + xRef,
+    y: info.canvasH / 2 + yRef,
+  };
+}
+
+function canvasFilterString() {
+  const { blurRadius, brightness, contrast, saturate, hueRotate } = effectConfig();
+  const parts = [];
+
+  if (blurRadius > 0) parts.push(`blur(${blurRadius}px)`);
+  if (brightness !== 1) parts.push(`brightness(${brightness})`);
+  if (contrast !== 1) parts.push(`contrast(${contrast})`);
+  if (saturate !== 1) parts.push(`saturate(${saturate})`);
+  if (hueRotate !== 0) parts.push(`hue-rotate(${hueRotate}deg)`);
+
+  return parts.length ? parts.join(' ') : 'none';
 }
 
 async function decodeImageFromFile(file) {
@@ -185,82 +247,6 @@ function applySepia(data) {
   }
 }
 
-function boxBlurRGBA(data, width, height, radius) {
-  if (radius <= 0) return;
-  const r = Math.min(radius, 50);
-  const tmp = new Uint8ClampedArray(data.length);
-
-  // Horizontal pass
-  for (let y = 0; y < height; y++) {
-    let sumR = 0, sumG = 0, sumB = 0, sumA = 0;
-    let count = 0;
-
-    for (let x = -r; x <= r; x++) {
-      const cx = clamp(x, 0, width - 1);
-      const idx = (y * width + cx) * 4;
-      sumR += data[idx];
-      sumG += data[idx + 1];
-      sumB += data[idx + 2];
-      sumA += data[idx + 3];
-      count += 1;
-    }
-
-    for (let x = 0; x < width; x++) {
-      const outIdx = (y * width + x) * 4;
-      tmp[outIdx] = Math.round(sumR / count);
-      tmp[outIdx + 1] = Math.round(sumG / count);
-      tmp[outIdx + 2] = Math.round(sumB / count);
-      tmp[outIdx + 3] = Math.round(sumA / count);
-
-      const xRemove = x - r;
-      const xAdd = x + r + 1;
-      const rx = clamp(xRemove, 0, width - 1);
-      const ax = clamp(xAdd, 0, width - 1);
-      const ridx = (y * width + rx) * 4;
-      const aidx = (y * width + ax) * 4;
-      sumR += data[aidx] - data[ridx];
-      sumG += data[aidx + 1] - data[ridx + 1];
-      sumB += data[aidx + 2] - data[ridx + 2];
-      sumA += data[aidx + 3] - data[ridx + 3];
-    }
-  }
-
-  // Vertical pass back into data
-  for (let x = 0; x < width; x++) {
-    let sumR = 0, sumG = 0, sumB = 0, sumA = 0;
-    let count = 0;
-
-    for (let y = -r; y <= r; y++) {
-      const cy = clamp(y, 0, height - 1);
-      const idx = (cy * width + x) * 4;
-      sumR += tmp[idx];
-      sumG += tmp[idx + 1];
-      sumB += tmp[idx + 2];
-      sumA += tmp[idx + 3];
-      count += 1;
-    }
-
-    for (let y = 0; y < height; y++) {
-      const outIdx = (y * width + x) * 4;
-      data[outIdx] = Math.round(sumR / count);
-      data[outIdx + 1] = Math.round(sumG / count);
-      data[outIdx + 2] = Math.round(sumB / count);
-      data[outIdx + 3] = Math.round(sumA / count);
-
-      const yRemove = y - r;
-      const yAdd = y + r + 1;
-      const ry = clamp(yRemove, 0, height - 1);
-      const ay = clamp(yAdd, 0, height - 1);
-      const ridx = (ry * width + x) * 4;
-      const aidx = (ay * width + x) * 4;
-      sumR += tmp[aidx] - tmp[ridx];
-      sumG += tmp[aidx + 1] - tmp[ridx + 1];
-      sumB += tmp[aidx + 2] - tmp[ridx + 2];
-      sumA += tmp[aidx + 3] - tmp[ridx + 3];
-    }
-  }
-}
-
 function sobelEdgesRGBA(data, width, height) {
   const lum = new Uint8ClampedArray(width * height);
   for (let i = 0, p = 0; i < data.length; i += 4, p++) {
@@ -302,12 +288,11 @@ function sobelEdgesRGBA(data, width, height) {
 }
 
 function applyEffectsToImageData(imageData) {
-  const { grayscale, sepia, blurRadius, edges } = effectConfig();
+  const { grayscale, sepia, edges } = effectConfig();
   const { data, width, height } = imageData;
 
   if (sepia) applySepia(data);
   if (grayscale) applyGrayscale(data);
-  if (blurRadius > 0) boxBlurRGBA(data, width, height, blurRadius);
   if (edges) sobelEdgesRGBA(data, width, height);
 }
 
@@ -316,8 +301,10 @@ async function renderTransformedCanvas(file) {
   const { width: srcW, height: srcH } = decoded;
 
   const crop = activeCropRectOrFull(srcW, srcH);
-  const outW = crop.sw;
-  const outH = crop.sh;
+  const cfg = effectConfig();
+  const out = rotatedDims(crop.sw, crop.sh, cfg.rotateDeg);
+  const outW = out.w;
+  const outH = out.h;
 
   const canvas = document.createElement('canvas');
   canvas.width = outW;
@@ -328,16 +315,22 @@ async function renderTransformedCanvas(file) {
 
   ctx.clearRect(0, 0, outW, outH);
 
-  const { reflect } = effectConfig();
-  if (reflect) {
-    ctx.save();
-    ctx.translate(outW, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(decoded.img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, outW, outH);
-    ctx.restore();
-  } else {
-    ctx.drawImage(decoded.img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, outW, outH);
-  }
+  // Apply blur as a true canvas filter (runs during drawImage).
+  ctx.filter = canvasFilterString();
+
+  const rotateRad = rotationRad(cfg.rotateDeg);
+  const drawW = (cfg.rotateDeg === 90 || cfg.rotateDeg === 270) ? outH : outW;
+  const drawH = (cfg.rotateDeg === 90 || cfg.rotateDeg === 270) ? outW : outH;
+
+  ctx.save();
+  ctx.translate(outW / 2, outH / 2);
+  if (cfg.reflect) ctx.scale(-1, 1);
+  if (rotateRad) ctx.rotate(rotateRad);
+  ctx.drawImage(decoded.img, crop.sx, crop.sy, crop.sw, crop.sh, -drawW / 2, -drawH / 2, drawW, drawH);
+  ctx.restore();
+
+  // Reset filter before pixel-level effects.
+  ctx.filter = 'none';
 
   const imageData = ctx.getImageData(0, 0, outW, outH);
   applyEffectsToImageData(imageData);
@@ -415,12 +408,14 @@ async function doPreview() {
     const decoded = await decodeImageFromFile(file);
     const { width: srcW, height: srcH } = decoded;
     const crop = activeCropRectOrFull(srcW, srcH);
+    const cfg = effectConfig();
+    const eff = rotatedDims(srcW, srcH, cfg.rotateDeg);
 
     // Fit preview canvas into wrapper while preserving aspect ratio.
     const wrapRect = els.previewWrap.getBoundingClientRect();
     const maxCssW = Math.max(1, Math.floor(wrapRect.width));
     const maxCssH = Math.max(1, Math.floor(wrapRect.height));
-    const ratio = srcW / srcH;
+    const ratio = eff.w / eff.h;
 
     let cssW = maxCssW;
     let cssH = Math.round(cssW / ratio);
@@ -438,21 +433,26 @@ async function doPreview() {
     els.previewCanvas.style.width = `${cssW}px`;
     els.previewCanvas.style.height = `${cssH}px`;
 
-    state.previewInfo = { srcW, srcH, canvasW, canvasH };
+    const rotateRad = rotationRad(cfg.rotateDeg);
+    const drawW = (cfg.rotateDeg === 90 || cfg.rotateDeg === 270) ? canvasH : canvasW;
+    const drawH = (cfg.rotateDeg === 90 || cfg.rotateDeg === 270) ? canvasW : canvasH;
+    state.previewInfo = { srcW, srcH, canvasW, canvasH, drawW, drawH, rotateRad, reflect: cfg.reflect };
 
     const ctx = els.previewCanvas.getContext('2d', { alpha: true });
     ctx.clearRect(0, 0, canvasW, canvasH);
 
-    const { reflect } = effectConfig();
-    if (reflect) {
-      ctx.save();
-      ctx.translate(canvasW, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(decoded.img, 0, 0, srcW, srcH, 0, 0, canvasW, canvasH);
-      ctx.restore();
-    } else {
-      ctx.drawImage(decoded.img, 0, 0, srcW, srcH, 0, 0, canvasW, canvasH);
-    }
+    // Apply blur as a true canvas filter (runs during drawImage).
+    ctx.filter = canvasFilterString();
+
+    ctx.save();
+    ctx.translate(canvasW / 2, canvasH / 2);
+    if (cfg.reflect) ctx.scale(-1, 1);
+    if (rotateRad) ctx.rotate(rotateRad);
+    ctx.drawImage(decoded.img, 0, 0, srcW, srcH, -drawW / 2, -drawH / 2, drawW, drawH);
+    ctx.restore();
+
+    // Reset filter before pixel-level effects.
+    ctx.filter = 'none';
 
     const imageData = ctx.getImageData(0, 0, canvasW, canvasH);
     applyEffectsToImageData(imageData);
@@ -463,20 +463,28 @@ async function doPreview() {
       const show = state.dragRect || state.cropRect;
       if (show) {
         const r = clampRectToBounds(show, srcW, srcH);
-        const px = (r.sx / srcW) * canvasW;
-        const py = (r.sy / srcH) * canvasH;
-        const pw = (r.sw / srcW) * canvasW;
-        const ph = (r.sh / srcH) * canvasH;
+        const info = state.previewInfo;
+        const p1 = mapSourcePointToPreviewCanvasPoint(info, r.sx, r.sy);
+        const p2 = mapSourcePointToPreviewCanvasPoint(info, r.sx + r.sw, r.sy);
+        const p3 = mapSourcePointToPreviewCanvasPoint(info, r.sx + r.sw, r.sy + r.sh);
+        const p4 = mapSourcePointToPreviewCanvasPoint(info, r.sx, r.sy + r.sh);
 
         ctx.save();
         ctx.lineWidth = Math.max(2, Math.round(2 * dpr));
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
-        ctx.strokeRect(px, py, pw, ph);
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p3.x, p3.y);
+        ctx.lineTo(p4.x, p4.y);
+        ctx.closePath();
+        ctx.stroke();
         ctx.restore();
       }
     }
 
-    els.previewMeta.textContent = `src ${srcW}×${srcH} • crop ${crop.sw}×${crop.sh} @ (${crop.sx},${crop.sy}) • out ${crop.sw}×${crop.sh}`;
+    const out = rotatedDims(crop.sw, crop.sh, cfg.rotateDeg);
+    els.previewMeta.textContent = `src ${srcW}×${srcH} • crop ${crop.sw}×${crop.sh} @ (${crop.sx},${crop.sy}) • out ${out.w}×${out.h}`;
     setStatus('Preview ready.', 'ok');
 
     // Cleanup ImageBitmap if used.
@@ -500,8 +508,26 @@ function canvasEventToSourcePoint(ev) {
   const xCanvas = (xCss / rect.width) * info.canvasW;
   const yCanvas = (yCss / rect.height) * info.canvasH;
 
-  const sx = clamp(Math.round((xCanvas / info.canvasW) * info.srcW), 0, info.srcW - 1);
-  const sy = clamp(Math.round((yCanvas / info.canvasH) * info.srcH), 0, info.srcH - 1);
+  // Invert the preview draw transform to recover source coordinates.
+  const cx = info.canvasW / 2;
+  const cy = info.canvasH / 2;
+  let dx = xCanvas - cx;
+  let dy = yCanvas - cy;
+
+  // Inverse reflect
+  if (info.reflect) dx = -dx;
+
+  // Inverse rotate
+  const cr = Math.cos(-info.rotateRad);
+  const sr = Math.sin(-info.rotateRad);
+  const xLocal = dx * cr - dy * sr;
+  const yLocal = dx * sr + dy * cr;
+
+  const fx = (xLocal + info.drawW / 2) / info.drawW;
+  const fy = (yLocal + info.drawH / 2) / info.drawH;
+
+  const sx = clamp(Math.round(fx * info.srcW), 0, info.srcW - 1);
+  const sy = clamp(Math.round(fy * info.srcH), 0, info.srcH - 1);
   return { sx, sy };
 }
 
@@ -679,6 +705,10 @@ function init() {
 
   els.quality.addEventListener('input', updateLabels);
   els.fxBlur.addEventListener('input', updateLabels);
+  if (els.fxBrightness) els.fxBrightness.addEventListener('input', updateLabels);
+  if (els.fxContrast) els.fxContrast.addEventListener('input', updateLabels);
+  if (els.fxSaturate) els.fxSaturate.addEventListener('input', updateLabels);
+  if (els.fxHue) els.fxHue.addEventListener('input', updateLabels);
 
   els.btnResetCrop.addEventListener('click', () => {
     state.cropRect = null;
@@ -687,6 +717,31 @@ function init() {
     updateCropUi();
     if (selectedFiles.length) doPreview();
   });
+
+  if (els.btnRotate) {
+    els.btnRotate.addEventListener('click', () => {
+      state.rotateDeg = (state.rotateDeg + 90) % 360;
+      if (selectedFiles.length) doPreview();
+    });
+  }
+
+  if (els.btnResetEffects) {
+    els.btnResetEffects.addEventListener('click', () => {
+      els.fxGrayscale.checked = false;
+      els.fxSepia.checked = false;
+      els.fxReflect.checked = false;
+      els.fxEdges.checked = false;
+
+      els.fxBlur.value = '0';
+      if (els.fxBrightness) els.fxBrightness.value = '1';
+      if (els.fxContrast) els.fxContrast.value = '1';
+      if (els.fxSaturate) els.fxSaturate.value = '1';
+      if (els.fxHue) els.fxHue.value = '0';
+
+      updateLabels();
+      if (selectedFiles.length) doPreview();
+    });
+  }
 
   els.enableCrop.addEventListener('change', () => {
     state.cropEnabled = !!els.enableCrop.checked;
@@ -714,7 +769,12 @@ function init() {
     els.fxReflect,
     els.fxBlur,
     els.fxEdges,
+    els.fxBrightness,
+    els.fxContrast,
+    els.fxSaturate,
+    els.fxHue,
   ]) {
+    if (!el) continue;
     el.addEventListener('change', () => {
       if (!selectedFiles.length) return;
       doPreview();

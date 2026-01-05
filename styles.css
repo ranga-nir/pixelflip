@@ -116,6 +116,13 @@
   overflow: hidden;
 }
 
+@media (min-width: 992px) {
+  .preview-sticky {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
 #previewCanvas {
   display: block;
   max-width: 100%;
