@@ -4,8 +4,9 @@ A simple but powerful browser-based **all-in-one** image converter
 
 Features:
 - Convert images to **PNG / JPEG / WebP**
-- Crop
-- Effects: **grayscale**, **sepia**, **reflect**, **blur**, **sobel**
+- Crop + Rotate (90° per click)
+- Effects: **grayscale**, **sepia**, **reflect**, **sobel**
+- Filters: **blur**, **brightness**, **contrast**, **saturation**, **hue**
 
 
 Notes
