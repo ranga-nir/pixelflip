@@ -53,9 +53,70 @@ const state = {
   dragStart: null, // source-pixel point
   /** @type {{sx:number, sy:number, sw:number, sh:number} | null} */
   dragRect: null, // source-pixel rect while dragging
+  /** @type {string | null} */
+  dragAction: null, // edge/corner being dragged
+  /** @type {HTMLCanvasElement | null} */
+  previewCache: null, // offscreen canvas
   /** @type {{srcW:number, srcH:number, canvasW:number, canvasH:number, drawW:number, drawH:number, rotateRad:number, reflect:boolean} | null} */
   previewInfo: null,
 };
+
+function redrawCrop() {
+  const info = state.previewInfo;
+  const cache = state.previewCache;
+  if (!info || !cache) return;
+  const { srcW, srcH, canvasW, canvasH } = info;
+
+  const ctx = els.previewCanvas.getContext('2d');
+  ctx.clearRect(0, 0, canvasW, canvasH);
+  ctx.drawImage(cache, 0, 0);
+
+  if (state.cropEnabled) {
+    const show = state.dragRect || state.cropRect;
+    if (show) {
+      const r = clampRectToBounds(show, srcW, srcH);
+      const p1 = mapSourcePointToPreviewCanvasPoint(info, r.sx, r.sy);
+      const p2 = mapSourcePointToPreviewCanvasPoint(info, r.sx + r.sw, r.sy);
+      const p3 = mapSourcePointToPreviewCanvasPoint(info, r.sx + r.sw, r.sy + r.sh);
+      const p4 = mapSourcePointToPreviewCanvasPoint(info, r.sx, r.sy + r.sh);
+
+      ctx.save();
+      // Draw outer dimmed overlay
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.beginPath();
+      // Outer box
+      ctx.moveTo(0, 0); ctx.lineTo(canvasW, 0); ctx.lineTo(canvasW, canvasH); ctx.lineTo(0, canvasH); ctx.lineTo(0, 0);
+      // Inner clip (counter-clockwise)
+      ctx.moveTo(p1.x, p1.y); ctx.lineTo(p4.x, p4.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p1.x, p1.y);
+      ctx.fill('evenodd');
+
+      const dpr = window.devicePixelRatio || 1;
+      ctx.lineWidth = Math.max(2, Math.round(2 * dpr));
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y);
+      ctx.closePath();
+      ctx.stroke();
+
+      const drawHandle = (p) => {
+        ctx.fillStyle = '#0d6efd';
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2 * dpr;
+        const size = 12 * dpr;
+        ctx.fillRect(p.x - size/2, p.y - size/2, size, size);
+        ctx.strokeRect(p.x - size/2, p.y - size/2, size, size);
+      };
+
+      drawHandle(p1); drawHandle(p2); drawHandle(p3); drawHandle(p4);
+      drawHandle({ x: (p1.x + p2.x)/2, y: (p1.y + p2.y)/2 });
+      drawHandle({ x: (p2.x + p3.x)/2, y: (p2.y + p3.y)/2 });
+      drawHandle({ x: (p3.x + p4.x)/2, y: (p3.y + p4.y)/2 });
+      drawHandle({ x: (p4.x + p1.x)/2, y: (p4.y + p1.y)/2 });
+      ctx.restore();
+    }
+  }
+}
+
 
 function setStatus(html, kind = 'muted') {
   const cls = {
@@ -458,30 +519,14 @@ async function doPreview() {
     applyEffectsToImageData(imageData);
     ctx.putImageData(imageData, 0, 0);
 
-    // Draw crop overlay (preview).
-    if (state.cropEnabled) {
-      const show = state.dragRect || state.cropRect;
-      if (show) {
-        const r = clampRectToBounds(show, srcW, srcH);
-        const info = state.previewInfo;
-        const p1 = mapSourcePointToPreviewCanvasPoint(info, r.sx, r.sy);
-        const p2 = mapSourcePointToPreviewCanvasPoint(info, r.sx + r.sw, r.sy);
-        const p3 = mapSourcePointToPreviewCanvasPoint(info, r.sx + r.sw, r.sy + r.sh);
-        const p4 = mapSourcePointToPreviewCanvasPoint(info, r.sx, r.sy + r.sh);
+    // Cache the drawn image
+    if (!state.previewCache) state.previewCache = document.createElement('canvas');
+    state.previewCache.width = canvasW;
+    state.previewCache.height = canvasH;
+    state.previewCache.getContext('2d').drawImage(els.previewCanvas, 0, 0);
 
-        ctx.save();
-        ctx.lineWidth = Math.max(2, Math.round(2 * dpr));
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.lineTo(p3.x, p3.y);
-        ctx.lineTo(p4.x, p4.y);
-        ctx.closePath();
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
+    // Draw crop overlay
+    redrawCrop();
 
     const out = rotatedDims(crop.sw, crop.sh, cfg.rotateDeg);
     els.previewMeta.textContent = `src ${srcW}×${srcH} • crop ${crop.sw}×${crop.sh} @ (${crop.sx},${crop.sy}) • out ${out.w}×${out.h}`;
@@ -656,50 +701,101 @@ function wireQueueClicks() {
 }
 
 function wireCropDragOnPreview() {
+  function getDragAction(canvasP, sourceP, rect, info) {
+    if (!rect) return 'new';
+    const p1 = mapSourcePointToPreviewCanvasPoint(info, rect.sx, rect.sy);
+    const p2 = mapSourcePointToPreviewCanvasPoint(info, rect.sx + rect.sw, rect.sy);
+    const p3 = mapSourcePointToPreviewCanvasPoint(info, rect.sx + rect.sw, rect.sy + rect.sh);
+    const p4 = mapSourcePointToPreviewCanvasPoint(info, rect.sx, rect.sy + rect.sh);
+
+    const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const tol = 16 * (window.devicePixelRatio || 1);
+
+    if (d(canvasP, p1) < tol) return 'nw';
+    if (d(canvasP, p2) < tol) return 'ne';
+    if (d(canvasP, p3) < tol) return 'se';
+    if (d(canvasP, p4) < tol) return 'sw';
+    if (d(canvasP, {x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2}) < tol) return 'n';
+    if (d(canvasP, {x:(p2.x+p3.x)/2, y:(p2.y+p3.y)/2}) < tol) return 'e';
+    if (d(canvasP, {x:(p3.x+p4.x)/2, y:(p3.y+p4.y)/2}) < tol) return 's';
+    if (d(canvasP, {x:(p4.x+p1.x)/2, y:(p4.y+p1.y)/2}) < tol) return 'w';
+
+    if (sourceP.sx >= rect.sx && sourceP.sx <= rect.sx + rect.sw &&
+        sourceP.sy >= rect.sy && sourceP.sy <= rect.sy + rect.sh) {
+      return 'move';
+    }
+    return 'new';
+  }
+
+  function getCanvasPoint(ev) {
+    const rect = els.previewCanvas.getBoundingClientRect();
+    let cx = ev.clientX, cy = ev.clientY;
+    if (ev.touches && ev.touches.length > 0) { cx = ev.touches[0].clientX; cy = ev.touches[0].clientY; }
+    else if (ev.changedTouches && ev.changedTouches.length > 0) { cx = ev.changedTouches[0].clientX; cy = ev.changedTouches[0].clientY; }
+    const info = state.previewInfo;
+    return { x: ((cx - rect.left) / rect.width) * info.canvasW, y: ((cy - rect.top) / rect.height) * info.canvasH };
+  }
+
   function onDown(ev) {
     if (!state.cropEnabled || selectedFiles.length === 0) return;
     const p = canvasEventToSourcePoint(ev);
-    if (!p) return;
+    const info = state.previewInfo;
+    if (!p || !info) return;
+
+    if (!state.cropRect) {
+      const padX = info.srcW * 0.1; const padY = info.srcH * 0.1;
+      state.cropRect = { sx: padX, sy: padY, sw: info.srcW - 2*padX, sh: info.srcH - 2*padY };
+    }
+
+    state.dragAction = getDragAction(getCanvasPoint(ev), p, state.cropRect, info);
     state.dragStart = p;
-    state.dragRect = { sx: p.sx, sy: p.sy, sw: 1, sh: 1 };
+    state.dragRect = { ...state.cropRect };
     updateCropUi();
-    doPreview();
+    redrawCrop();
   }
 
   function onMove(ev) {
-    if (!state.cropEnabled || !state.dragStart) return;
+    if (!state.cropEnabled || !state.dragStart || !state.dragAction) return;
     const p = canvasEventToSourcePoint(ev);
     if (!p) return;
-    state.dragRect = normalizeRectFromPoints(state.dragStart, p);
-    doPreview();
+
+    const base = state.cropRect;
+    const dx = p.sx - state.dragStart.sx;
+    const dy = p.sy - state.dragStart.sy;
+    let { sx, sy, sw, sh } = base;
+
+    if (state.dragAction === 'new') {
+      state.dragRect = normalizeRectFromPoints(state.dragStart, p);
+    } else if (state.dragAction === 'move') {
+      state.dragRect = { sx: sx + dx, sy: sy + dy, sw, sh };
+    } else {
+      if (state.dragAction.includes('n')) { sy += dy; sh -= dy; }
+      if (state.dragAction.includes('s')) { sh += dy; }
+      if (state.dragAction.includes('w')) { sx += dx; sw -= dx; }
+      if (state.dragAction.includes('e')) { sw += dx; }
+
+      let nx = sx, ny = sy, nw = sw, nh = sh;
+      if (nw < 1) { nx = sx + nw; nw = Math.abs(nw) || 1; }
+      if (nh < 1) { ny = sy + nh; nh = Math.abs(nh) || 1; }
+      state.dragRect = { sx: nx, sy: ny, sw: nw, sh: nh };
+    }
+    redrawCrop();
   }
 
   function onUp(ev) {
     if (!state.cropEnabled || !state.dragStart) return;
-    const p = canvasEventToSourcePoint(ev);
-    if (!p) {
-      state.dragStart = null;
-      state.dragRect = null;
-      doPreview();
-      return;
-    }
-
-    const rect = normalizeRectFromPoints(state.dragStart, p);
     const info = state.previewInfo;
     state.dragStart = null;
-    state.dragRect = null;
+    state.dragAction = null;
 
-    if (!info) return;
-
-    // If user just clicks without dragging, treat as "clear crop".
-    if (rect.sw < 5 && rect.sh < 5) {
-      state.cropRect = null;
-      updateCropUi();
-      doPreview();
-      return;
+    if (state.dragRect && info) {
+      if (state.dragRect.sw < 5 && state.dragRect.sh < 5 && state.dragAction === 'new') {
+        state.cropRect = null;
+      } else {
+        state.cropRect = clampRectToBounds(state.dragRect, info.srcW, info.srcH);
+      }
     }
-
-    state.cropRect = clampRectToBounds(rect, info.srcW, info.srcH);
+    state.dragRect = null;
     updateCropUi();
     doPreview();
   }
