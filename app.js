@@ -502,8 +502,20 @@ function canvasEventToSourcePoint(ev) {
   if (!info) return null;
 
   const rect = els.previewCanvas.getBoundingClientRect();
-  const xCss = ev.clientX - rect.left;
-  const yCss = ev.clientY - rect.top;
+  
+  let clientX = ev.clientX;
+  let clientY = ev.clientY;
+
+  if (ev.touches && ev.touches.length > 0) {
+    clientX = ev.touches[0].clientX;
+    clientY = ev.touches[0].clientY;
+  } else if (ev.changedTouches && ev.changedTouches.length > 0) {
+    clientX = ev.changedTouches[0].clientX;
+    clientY = ev.changedTouches[0].clientY;
+  }
+
+  const xCss = clientX - rect.left;
+  const yCss = clientY - rect.top;
 
   const xCanvas = (xCss / rect.width) * info.canvasW;
   const yCanvas = (yCss / rect.height) * info.canvasH;
@@ -695,6 +707,25 @@ function wireCropDragOnPreview() {
   els.previewCanvas.addEventListener('mousedown', onDown);
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
+
+  // Touch support for mobile devices
+  els.previewCanvas.addEventListener('touchstart', (ev) => {
+    if (!state.cropEnabled || selectedFiles.length === 0) return;
+    if (ev.cancelable) ev.preventDefault();
+    onDown(ev);
+  }, { passive: false });
+
+  window.addEventListener('touchmove', (ev) => {
+    if (!state.cropEnabled || !state.dragStart) return;
+    if (ev.cancelable) ev.preventDefault();
+    onMove(ev);
+  }, { passive: false });
+
+  window.addEventListener('touchend', (ev) => {
+    if (!state.cropEnabled || !state.dragStart) return;
+    if (ev.cancelable) ev.preventDefault();
+    onUp(ev);
+  }, { passive: false });
 }
 
 function init() {
